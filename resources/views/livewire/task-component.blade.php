@@ -22,16 +22,26 @@
     </template>
 
     <ul class="divide-y divide-gray-200 bg-white rounded-md shadow">
-        <template x-for="task in tasks" :key="task.id">
+        <template x-for="task in sortedTasks" :key="task.id">
             <li class="flex items-center gap-3 p-3">
                 <input type="checkbox" :checked="task.is_completed" @change="toggle(task)"
                        class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
                 <div class="flex-1">
                     <div class="flex items-center gap-2">
-                        <span class="font-medium" :class="task.is_completed ? 'line-through text-gray-400' : ''" x-text="task.title"></span>
+                        <template x-if="editId !== task.id">
+                            <span class="font-medium cursor-pointer" @click="beginEdit(task)" :class="task.is_completed ? 'line-through text-gray-400' : ''" x-text="task.title"></span>
+                        </template>
+                        <template x-if="editId === task.id">
+                            <form @submit.prevent="saveEdit(task)" class="flex items-center gap-2">
+                                <input x-model="editTitle" class="rounded-md border-gray-300 focus:border-indigo-500 focus:ring-indigo-500" />
+                                <button type="submit" class="text-sm text-indigo-600 hover:underline">Kaydet</button>
+                                <button type="button" @click="cancelEdit()" class="text-sm text-gray-500 hover:underline">Vazgeç</button>
+                            </form>
+                        </template>
                         <span x-show="task.priority > 0" class="text-xs rounded-full bg-gray-100 px-2 py-0.5" x-text="'P'+task.priority"></span>
                     </div>
                     <div class="text-xs text-gray-500" x-show="task.due_at" x-text="formatDate(task.due_at)"></div>
+                    <p x-show="errors[task.id]" class="text-sm text-red-600" x-text="errors[task.id]"></p>
                 </div>
                 <button @click="remove(task)" class="text-sm text-red-600 hover:underline">Sil</button>
             </li>
@@ -47,8 +57,21 @@
                 tasks: [],
                 loading: false,
                 form: { title: '', description: null, due_at: null, priority: 0, sort_order: null },
+                editId: null,
+                editTitle: '',
+                errors: {},
                 async init() {
                     await this.fetchTasks();
+                },
+                get sortedTasks() {
+                    return [...this.tasks].sort((a,b) => {
+                        if (a.is_completed !== b.is_completed) return a.is_completed - b.is_completed; // false önce
+                        if (a.priority !== b.priority) return a.priority - b.priority;
+                        if (a.due_at && b.due_at) return new Date(a.due_at) - new Date(b.due_at);
+                        if (a.due_at && !b.due_at) return -1;
+                        if (!a.due_at && b.due_at) return 1;
+                        return (a.sort_order ?? 0) - (b.sort_order ?? 0);
+                    });
                 },
                 async fetchTasks() {
                     this.loading = true;
@@ -76,6 +99,10 @@
                         this.form.title = '';
                         this.form.due_at = null;
                         this.form.priority = 0;
+                        this.errors = {};
+                    } else if (res.status === 422) {
+                        const data = await res.json();
+                        this.errors = { create: Object.values(data.errors).flat().join(' ') };
                     }
                 },
                 async toggle(task) {
@@ -102,6 +129,32 @@
                     });
                     if (res.ok) {
                         this.tasks = this.tasks.filter(t => t.id !== task.id);
+                    }
+                },
+                beginEdit(task) {
+                    this.editId = task.id;
+                    this.editTitle = task.title;
+                    delete this.errors[task.id];
+                },
+                cancelEdit() { this.editId = null; this.editTitle = ''; },
+                async saveEdit(task) {
+                    const res = await fetch(`/tasks/${task.id}`, {
+                        method: 'PATCH',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]')?.getAttribute('content') ?? ''
+                        },
+                        body: JSON.stringify({ title: this.editTitle })
+                    });
+                    if (res.ok) {
+                        const updated = await res.json();
+                        const idx = this.tasks.findIndex(t => t.id === task.id);
+                        if (idx !== -1) this.tasks[idx] = updated;
+                        this.cancelEdit();
+                    } else if (res.status === 422) {
+                        const data = await res.json();
+                        this.errors = { ...this.errors, [task.id]: Object.values(data.errors).flat().join(' ') };
                     }
                 },
                 formatDate(d) {
