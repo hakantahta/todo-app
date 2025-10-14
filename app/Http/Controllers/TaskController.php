@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Task;
+use App\Http\Requests\StoreTaskRequest;
+use App\Http\Requests\UpdateTaskRequest;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
@@ -24,15 +26,9 @@ class TaskController extends Controller
         return response()->json($tasks);
     }
 
-    public function store(Request $request): JsonResponse
+    public function store(StoreTaskRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'title' => ['required', 'string', 'max:255'],
-            'description' => ['nullable', 'string'],
-            'due_at' => ['nullable', 'date'],
-            'priority' => ['nullable', 'integer', 'min:0', 'max:5'],
-            'sort_order' => ['nullable', 'integer', 'min:0'],
-        ]);
+        $validated = $request->validated();
 
         $task = Task::create([
             'user_id' => $request->user()->id,
@@ -52,20 +48,11 @@ class TaskController extends Controller
         return response()->json($task);
     }
 
-    public function update(Request $request, Task $task): JsonResponse
+    public function update(UpdateTaskRequest $request, Task $task): JsonResponse
     {
         $this->authorizeOwnership($task);
 
-        $validated = $request->validate([
-            'title' => ['sometimes', 'required', 'string', 'max:255'],
-            'description' => ['nullable', 'string'],
-            'is_completed' => ['nullable', 'boolean'],
-            'due_at' => ['nullable', 'date'],
-            'priority' => ['nullable', 'integer', 'min:0', 'max:5'],
-            'sort_order' => ['nullable', 'integer', 'min:0'],
-        ]);
-
-        $task->fill($validated);
+        $task->fill($request->validated());
         $task->save();
 
         return response()->json($task);
