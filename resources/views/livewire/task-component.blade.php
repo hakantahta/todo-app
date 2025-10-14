@@ -51,13 +51,14 @@
 
     <ul class="divide-y divide-gray-200 bg-white rounded-md shadow">
         <template x-for="task in sortedTasks" :key="task.id">
-            <li class="flex items-center gap-3 p-3">
+            <li class="flex items-center gap-3 p-3 rounded" :class="task.is_completed ? 'bg-green-50' : 'bg-sky-50'">
                 <input type="checkbox" :checked="task.is_completed" @change="toggle(task)"
                        class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
                 <div class="flex-1">
                     <div class="flex items-center gap-2">
+                        <span :class="'inline-block h-2.5 w-2.5 rounded-full ' + priorityClass(task.priority)" aria-hidden="true"></span>
                         <template x-if="editId !== task.id">
-                            <span class="font-medium cursor-pointer" @click="beginEdit(task)" :class="task.is_completed ? 'line-through text-gray-400' : ''" x-text="task.title"></span>
+                            <span class="font-medium cursor-pointer" @click="beginEdit(task)" :class="task.is_completed ? 'line-through text-gray-400' : ''" x-text="task.title" ></span>
                         </template>
                         <template x-if="editId === task.id">
                             <form @submit.prevent="saveEdit(task)" class="flex items-center gap-2">
@@ -68,7 +69,12 @@
                         </template>
                         <span x-show="task.priority > 0" class="text-xs rounded-full bg-gray-100 px-2 py-0.5" x-text="'P'+task.priority"></span>
                     </div>
-                    <div class="text-xs text-gray-500" x-show="task.due_at" x-text="formatDate(task.due_at)"></div>
+                    <div class="text-xs text-gray-500" x-show="task.due_at">
+                        Son tarih: <span x-text="formatDate(task.due_at)"></span>
+                    </div>
+                    <div class="text-xs text-gray-500">
+                        Oluşturuldu: <span x-text="formatDate(task.created_at)"></span>
+                    </div>
                     <p x-show="errors[task.id]" class="text-sm text-red-600" x-text="errors[task.id]"></p>
                 </div>
                 <button @click="remove(task)" class="text-sm text-red-600 hover:underline">Sil</button>
@@ -214,6 +220,16 @@
                 formatDate(d) {
                     const date = new Date(d);
                     return date.toLocaleString();
+                },
+                priorityClass(n) {
+                    switch (Number(n)) {
+                        case 5: return 'bg-red-600';
+                        case 4: return 'bg-orange-500';
+                        case 3: return 'bg-amber-400';
+                        case 2: return 'bg-yellow-400';
+                        case 1: return 'bg-lime-400';
+                        default: return 'bg-green-500';
+                    }
                 },
                 toast(message, type = 'success') {
                     const id = Math.random().toString(36).slice(2);
