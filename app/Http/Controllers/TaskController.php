@@ -11,11 +11,30 @@ use Illuminate\Support\Facades\Auth;
 
 class TaskController extends Controller
 {
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
         $user = Auth::user();
-        $tasks = Task::query()
-            ->where('user_id', $user->id)
+        $query = Task::query()->where('user_id', $user->id);
+
+        // Backend filtreleri: q (title), status (active|completed|all), priority (0-5)
+        $search = trim((string) $request->query('q', ''));
+        if ($search !== '') {
+            $query->where('title', 'like', "%{$search}%");
+        }
+
+        $status = (string) $request->query('status', 'all');
+        if ($status === 'active') {
+            $query->where('is_completed', false);
+        } elseif ($status === 'completed') {
+            $query->where('is_completed', true);
+        }
+
+        if ($request->filled('priority')) {
+            $priority = (int) $request->query('priority');
+            $query->where('priority', $priority);
+        }
+
+        $tasks = $query
             ->orderByDesc('is_completed')
             ->orderBy('priority')
             ->orderBy('due_at')

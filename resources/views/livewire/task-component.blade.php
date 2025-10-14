@@ -92,18 +92,14 @@
                 filters: { q: '', status: 'all', priority: null },
                 async init() {
                     await this.fetchTasks();
+                    // Filtreler değiştikçe backend'den veri çek
+                    this.$watch('filters.q', () => this.fetchTasks());
+                    this.$watch('filters.status', () => this.fetchTasks());
+                    this.$watch('filters.priority', () => this.fetchTasks());
                 },
                 get sortedTasks() {
-                    // Filtreleri uygula
-                    const filtered = this.tasks.filter(t => {
-                        if (this.filters.status === 'active' && t.is_completed) return false;
-                        if (this.filters.status === 'completed' && !t.is_completed) return false;
-                        if (this.filters.priority !== null && t.priority !== this.filters.priority) return false;
-                        if (this.filters.q && !t.title.toLowerCase().includes(this.filters.q.toLowerCase())) return false;
-                        return true;
-                    });
-                    // Sırala: aktifler önce, öncelik, due_at, sort_order
-                    return filtered.sort((a,b) => {
+                    // Sırala: aktifler önce, öncelik, due_at, sort_order (filtreler backend'de)
+                    return [...this.tasks].sort((a,b) => {
                         if (a.is_completed !== b.is_completed) return a.is_completed - b.is_completed; // false önce
                         if (a.priority !== b.priority) return a.priority - b.priority;
                         if (a.due_at && b.due_at) return new Date(a.due_at) - new Date(b.due_at);
@@ -115,7 +111,11 @@
                 async fetchTasks() {
                     this.loading = true;
                     try {
-                        const res = await fetch('/tasks', { headers: { 'Accept': 'application/json' } });
+                        const params = new URLSearchParams();
+                        if (this.filters.q) params.set('q', this.filters.q);
+                        if (this.filters.status && this.filters.status !== 'all') params.set('status', this.filters.status);
+                        if (this.filters.priority !== null) params.set('priority', this.filters.priority);
+                        const res = await fetch(`/tasks?${params.toString()}`, { headers: { 'Accept': 'application/json' } });
                         if (!res.ok) throw new Error('Görevler yüklenemedi');
                         this.tasks = await res.json();
                         this.toast('Görevler yüklendi', 'success');
