@@ -1,4 +1,12 @@
 <div x-data="taskList()" x-init="init()" class="space-y-6">
+    <!-- Toast container -->
+    <div class="fixed inset-x-0 top-4 z-50 flex justify-center" aria-live="assertive">
+        <template x-for="toast in toasts" :key="toast.id">
+            <div class="mx-2 rounded-md px-4 py-2 shadow text-white"
+                 :class="toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'"
+                 x-text="toast.message"></div>
+        </template>
+    </div>
     <form @submit.prevent="create" class="flex items-start gap-3">
         <div class="flex-1">
             <label class="sr-only" for="title">Başlık</label>
@@ -16,6 +24,26 @@
         </select>
         <button type="submit" class="inline-flex items-center rounded-md bg-indigo-600 px-4 py-2 text-white hover:bg-indigo-700">Ekle</button>
     </form>
+
+    <!-- Arama ve filtreler -->
+    <div class="flex flex-wrap items-center gap-3">
+        <div class="flex-1 min-w-[220px]">
+            <input x-model="filters.q" type="text" placeholder="Görevlerde ara..."
+                   class="w-full rounded-md border-gray-300 focus:border-indigo-500 focus:ring-indigo-500">
+        </div>
+        <select x-model="filters.status" class="rounded-md border-gray-300 focus:border-indigo-500 focus:ring-indigo-500">
+            <option value="all">Tümü</option>
+            <option value="active">Aktif</option>
+            <option value="completed">Tamamlanmış</option>
+        </select>
+        <select x-model.number="filters.priority" class="rounded-md border-gray-300 focus:border-indigo-500 focus:ring-indigo-500">
+            <option :value="null">Öncelik (hepsi)</option>
+            <template x-for="n in [0,1,2,3,4,5]" :key="n">
+                <option :value="n">P<n x-text="n"></n></option>
+            </template>
+        </select>
+        <button type="button" @click="clearFilters" class="text-sm text-gray-600 hover:underline">Temizle</button>
+    </div>
 
     <template x-if="loading">
         <div class="text-gray-500">Yükleniyor...</div>
@@ -60,11 +88,22 @@
                 editId: null,
                 editTitle: '',
                 errors: {},
+                toasts: [],
+                filters: { q: '', status: 'all', priority: null },
                 async init() {
                     await this.fetchTasks();
                 },
                 get sortedTasks() {
-                    return [...this.tasks].sort((a,b) => {
+                    // Filtreleri uygula
+                    const filtered = this.tasks.filter(t => {
+                        if (this.filters.status === 'active' && t.is_completed) return false;
+                        if (this.filters.status === 'completed' && !t.is_completed) return false;
+                        if (this.filters.priority !== null && t.priority !== this.filters.priority) return false;
+                        if (this.filters.q && !t.title.toLowerCase().includes(this.filters.q.toLowerCase())) return false;
+                        return true;
+                    });
+                    // Sırala: aktifler önce, öncelik, due_at, sort_order
+                    return filtered.sort((a,b) => {
                         if (a.is_completed !== b.is_completed) return a.is_completed - b.is_completed; // false önce
                         if (a.priority !== b.priority) return a.priority - b.priority;
                         if (a.due_at && b.due_at) return new Date(a.due_at) - new Date(b.due_at);
@@ -79,6 +118,7 @@
                         const res = await fetch('/tasks', { headers: { 'Accept': 'application/json' } });
                         if (!res.ok) throw new Error('Görevler yüklenemedi');
                         this.tasks = await res.json();
+                        this.toast('Görevler yüklendi', 'success');
                     } finally {
                         this.loading = false;
                     }
@@ -100,9 +140,13 @@
                         this.form.due_at = null;
                         this.form.priority = 0;
                         this.errors = {};
+                        this.toast('Görev eklendi', 'success');
                     } else if (res.status === 422) {
                         const data = await res.json();
                         this.errors = { create: Object.values(data.errors).flat().join(' ') };
+                        this.toast('Doğrulama hatası: ' + this.errors.create, 'error');
+                    } else {
+                        this.toast('Görev ekleme başarısız', 'error');
                     }
                 },
                 async toggle(task) {
@@ -117,6 +161,9 @@
                         const updated = await res.json();
                         const idx = this.tasks.findIndex(t => t.id === task.id);
                         if (idx !== -1) this.tasks[idx] = updated;
+                        this.toast(updated.is_completed ? 'Görev tamamlandı' : 'Görev aktif edildi', 'success');
+                    } else {
+                        this.toast('Durum değiştirilemedi', 'error');
                     }
                 },
                 async remove(task) {
@@ -129,6 +176,9 @@
                     });
                     if (res.ok) {
                         this.tasks = this.tasks.filter(t => t.id !== task.id);
+                        this.toast('Görev silindi', 'success');
+                    } else {
+                        this.toast('Görev silinemedi', 'error');
                     }
                 },
                 beginEdit(task) {
@@ -152,15 +202,25 @@
                         const idx = this.tasks.findIndex(t => t.id === task.id);
                         if (idx !== -1) this.tasks[idx] = updated;
                         this.cancelEdit();
+                        this.toast('Görev güncellendi', 'success');
                     } else if (res.status === 422) {
                         const data = await res.json();
                         this.errors = { ...this.errors, [task.id]: Object.values(data.errors).flat().join(' ') };
+                        this.toast('Doğrulama hatası: ' + this.errors[task.id], 'error');
+                    } else {
+                        this.toast('Görev güncellenemedi', 'error');
                     }
                 },
                 formatDate(d) {
                     const date = new Date(d);
                     return date.toLocaleString();
-                }
+                },
+                toast(message, type = 'success') {
+                    const id = Math.random().toString(36).slice(2);
+                    this.toasts.push({ id, message, type });
+                    setTimeout(() => { this.toasts = this.toasts.filter(t => t.id !== id) }, 2500);
+                },
+                clearFilters() { this.filters = { q: '', status: 'all', priority: null }; }
             }
         }
     </script>
